@@ -27,9 +27,9 @@ spec = do
         let editor' = editor { mode = Insert }
             Cursor r c = cursor editor'
             beforeLen = lineLength (buffer editor') r
-            after = applyCommand (InsertChar 'x') editor'
-            Cursor _ c' = cursor after
-            afterLen = lineLength (buffer after) r
+            editorAfter = applyCommand (InsertChar 'x') editor'
+            Cursor _ c' = cursor editorAfter
+            afterLen = lineLength (buffer editorAfter) r
         in c' == c + 1 && afterLen == beforeLen + 1
 
   describe "backspace" $ do
@@ -38,8 +38,8 @@ spec = do
         let editor' = editor { mode = Insert }
             Cursor r _ = cursor editor'
             beforeLen = lineLength (buffer editor') r
-            after = applyCommand Backspace editor'
-            afterLen = lineLength (buffer after) r
+            editorAfter = applyCommand Backspace editor'
+            afterLen = lineLength (buffer editorAfter) r
         in afterLen <= beforeLen
 
   describe "examples" $ do
@@ -48,6 +48,15 @@ spec = do
           editor = Editor buf (Cursor 0 1) Normal
           Editor _ (Cursor r c) _ = moveRight editor
       (r, c) `shouldBe` (1, 0)
+
+  describe "model-based" $ do
+    prop "model matches editor for random command sequences" $
+      forAll genEditor $ \editor ->
+        forAll genCommandSeq $ \cmds ->
+          let model0 = modelFromEditor editor
+              editor' = applyCommands cmds editor
+              model' = applyCommandsModel cmds model0
+          in modelMatches editor' model'
 
 invariant :: Editor -> Bool
 invariant (Editor buf (Cursor r c) _) =
@@ -93,3 +102,112 @@ genCommand = oneof
   , pure EnterInsert
   , pure EnterNormal
   ]
+
+genCommandSeq :: Gen [Command]
+genCommandSeq = sized $ \n -> do
+  len <- chooseInt (0, min 30 (n + 5))
+  vectorOf len genCommand
+
+applyCommands :: [Command] -> Editor -> Editor
+applyCommands cmds editor = foldl (flip applyCommand) editor cmds
+
+data Model = Model
+  { modelLines :: NonEmpty Text
+  , modelCursor :: Cursor
+  , modelMode :: Mode
+  } deriving (Eq, Show)
+
+modelFromEditor :: Editor -> Model
+modelFromEditor (Editor buf cur mode') = Model (toLines buf) cur mode'
+
+modelMatches :: Editor -> Model -> Bool
+modelMatches (Editor buf cur mode') (Model ls cur' mode'') =
+  toLines buf == ls && cur == cur' && mode' == mode''
+
+applyCommandsModel :: [Command] -> Model -> Model
+applyCommandsModel cmds model = foldl (flip applyCommandModel) model cmds
+
+applyCommandModel :: Command -> Model -> Model
+applyCommandModel cmd model@(Model ls cur mode') =
+  case cmd of
+    MoveLeft -> moveLeftModel model
+    MoveRight -> moveRightModel model
+    MoveUp -> moveUpModel model
+    MoveDown -> moveDownModel model
+    InsertChar ch ->
+      if mode' == Insert then insertCharModel ch model else model
+    Backspace ->
+      if mode' == Insert then backspaceModel model else model
+    EnterInsert -> Model ls cur Insert
+    EnterNormal -> Model ls cur Normal
+
+moveLeftModel :: Model -> Model
+moveLeftModel (Model ls (Cursor r c) mode') =
+  let rows = NE.length ls
+  in if c > 0
+       then Model ls (Cursor r (c - 1)) mode'
+       else if r > 0 && rows > 0
+              then let prevLen = lineLengthModel (r - 1) ls
+                   in Model ls (Cursor (r - 1) prevLen) mode'
+              else Model ls (Cursor r c) mode'
+
+moveRightModel :: Model -> Model
+moveRightModel (Model ls (Cursor r c) mode') =
+  let rows = NE.length ls
+      curLen = lineLengthModel r ls
+  in if c < curLen
+       then Model ls (Cursor r (c + 1)) mode'
+       else if r + 1 < rows
+              then Model ls (Cursor (r + 1) 0) mode'
+              else Model ls (Cursor r c) mode'
+
+moveUpModel :: Model -> Model
+moveUpModel (Model ls (Cursor r c) mode') =
+  if r > 0
+    then let newRow = r - 1
+             newCol = min c (lineLengthModel newRow ls)
+         in Model ls (Cursor newRow newCol) mode'
+    else Model ls (Cursor r c) mode'
+
+moveDownModel :: Model -> Model
+moveDownModel (Model ls (Cursor r c) mode') =
+  let rows = NE.length ls
+  in if r + 1 < rows
+       then let newRow = r + 1
+                newCol = min c (lineLengthModel newRow ls)
+            in Model ls (Cursor newRow newCol) mode'
+       else Model ls (Cursor r c) mode'
+
+insertCharModel :: Char -> Model -> Model
+insertCharModel ch (Model ls (Cursor r c) mode') =
+  let line = lineAtModel r ls
+      (prefix, suffix) = T.splitAt c line
+      newLine = prefix <> T.singleton ch <> suffix
+      newLines = setLineModel r newLine ls
+  in Model newLines (Cursor r (c + 1)) mode'
+
+backspaceModel :: Model -> Model
+backspaceModel (Model ls (Cursor r c) mode')
+  | c <= 0 = Model ls (Cursor r c) mode'
+  | otherwise =
+      let line = lineAtModel r ls
+          beforeText = T.take (c - 1) line
+          afterText = T.drop c line
+          newLine = beforeText <> afterText
+          newLines = setLineModel r newLine ls
+      in Model newLines (Cursor r (c - 1)) mode'
+
+lineAtModel :: Int -> NonEmpty Text -> Text
+lineAtModel idx ls = NE.toList ls !! idx
+
+lineLengthModel :: Int -> NonEmpty Text -> Int
+lineLengthModel idx ls = T.length (lineAtModel idx ls)
+
+setLineModel :: Int -> Text -> NonEmpty Text -> NonEmpty Text
+setLineModel idx newLine ls =
+  let (prefix, rest) = splitAt idx (NE.toList ls)
+  in case rest of
+       [] -> ls
+       (_:xs) -> case prefix ++ (newLine : xs) of
+                   (y:ys) -> y :| ys
+                   [] -> ls
