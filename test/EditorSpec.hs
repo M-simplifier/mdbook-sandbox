@@ -124,7 +124,9 @@ genCommand = oneof
   , pure MoveUp
   , pure MoveDown
   , InsertChar <$> elements ['a' .. 'c']
+  , pure InsertNewline
   , pure Backspace
+  , pure DeleteLine
   , pure EnterInsert
   , pure EnterNormal
   ]
