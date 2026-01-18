@@ -22,6 +22,18 @@ vim-likeエディタの最小モデルとして、次の要素を定義します
 
 この「無視される」挙動も仕様としてテストに落とし込みます。
 
+## モード別の操作一覧
+
+| Command | Normal | Insert | 備考 |
+| --- | --- | --- | --- |
+| MoveLeft/Right/Up/Down | 有効 | 有効 | カーソル移動 |
+| InsertChar | 無視 | 有効 | 文字挿入 |
+| InsertNewline | 無視 | 有効 | 行分割 |
+| Backspace | 無視 | 有効 | 1文字削除 |
+| DeleteLine | 有効 | 無視 | 行削除 |
+| EnterInsert | 有効 | 有効 | Insertへ |
+| EnterNormal | 有効 | 有効 | Normalへ |
+
 ## 型設計の方向性
 
 - `Buffer` は `NonEmpty Text` を使い、空バッファを型レベルで排除する
