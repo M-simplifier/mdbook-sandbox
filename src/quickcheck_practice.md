@@ -22,3 +22,15 @@ QuickCheckの効果は生成器で決まります。エディタの場合、ラ�
 ## Shrinkの視点
 
 失敗時に「最小ケース」を得るため、`Buffer`や`Cursor`のShrinkも意識します。特に行数と列数が減るように設計すると、デバッグが圧倒的に楽になります。
+
+### Shrinkが効かないときの例
+
+例えば「カーソルが範囲外になる」失敗が出たとしても、巨大なバッファと長いコマンド列のままだと原因が見えません。
+
+```
+*** Failed! Falsified (after 31 tests):
+buffer = 5 lines, cursor = (3, 18)
+commands = [MoveRight, MoveRight, InsertNewline, ...]
+```
+
+ここから「1行・短いコマンド列」に縮められるように、Shrinkで行数と列数を優先的に減らすのがポイントです。Shrinkの設計は、PBTのデバッグ効率を左右します。
