@@ -75,6 +75,28 @@ spec = do
           Editor _ (Cursor r c) _ = moveRight editor
       (r, c) `shouldBe` (1, 0)
 
+  describe "mode behavior" $ do
+    prop "Normal mode ignores insert-only commands" $
+      forAll genEditor $ \editor ->
+        let editor' = editor { mode = Normal }
+            cmds = [InsertChar 'x', InsertNewline, Backspace]
+        in all (\cmd -> applyCommand cmd editor' == editor') cmds
+
+    prop "Insert mode ignores normal-only commands" $
+      forAll genEditor $ \editor ->
+        let editor' = editor { mode = Insert }
+        in applyCommand DeleteLine editor' == editor'
+
+    it "EnterInsert switches to Insert mode" $ do
+      let editor = initialEditor (T.pack "")
+          Editor _ _ mode' = applyCommand EnterInsert editor
+      mode' `shouldBe` Insert
+
+    it "EnterNormal switches to Normal mode" $ do
+      let editor = initialEditor (T.pack "x")
+          Editor _ _ mode' = applyCommand EnterNormal (editor { mode = Insert })
+      mode' `shouldBe` Normal
+
   describe "model-based" $ do
     prop "model matches editor for random command sequences" $
       forAll genEditor $ \editor ->
