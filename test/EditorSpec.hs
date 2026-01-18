@@ -97,6 +97,35 @@ spec = do
           Editor _ _ mode' = applyCommand EnterNormal (editor { mode = Insert })
       mode' `shouldBe` Normal
 
+  describe "scenarios" $ do
+    it "Insert line, split, then delete upper line in Normal mode" $ do
+      let start = initialEditor (T.pack "")
+          cmds =
+            [ EnterInsert
+            , InsertChar 'a'
+            , InsertChar 'b'
+            , InsertNewline
+            , InsertChar 'c'
+            , EnterNormal
+            , MoveUp
+            , DeleteLine
+            ]
+          Editor buf (Cursor r c) mode' = applyCommands cmds start
+      toLines buf `shouldBe` (T.pack "c" :| [])
+      (r, c) `shouldBe` (0, 1)
+      mode' `shouldBe` Normal
+
+    it "Insert mode ignores DeleteLine in a mixed sequence" $ do
+      let start = initialEditor (T.pack "x")
+          cmds =
+            [ EnterInsert
+            , DeleteLine
+            , InsertChar 'y'
+            ]
+          Editor buf _ mode' = applyCommands cmds start
+      toLines buf `shouldBe` (T.pack "yx" :| [])
+      mode' `shouldBe` Insert
+
   describe "model-based" $ do
     prop "model matches editor for random command sequences" $
       forAll genEditor $ \editor ->
