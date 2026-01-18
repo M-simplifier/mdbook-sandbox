@@ -7,14 +7,17 @@ module Editor.Core
   , moveUp
   , moveDown
   , insertChar
+  , insertNewline
   , backspace
+  , deleteLine
   ) where
 
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Editor.Buffer
+import Editor.Buffer hiding (deleteLine)
+import qualified Editor.Buffer as Buffer
 import Editor.Command
 import Editor.Cursor
 
@@ -37,8 +40,12 @@ applyCommand cmd editor@(Editor buf cur mode) =
     MoveDown -> moveDown editor
     InsertChar ch ->
       if mode == Insert then insertChar ch editor else editor
+    InsertNewline ->
+      if mode == Insert then insertNewline editor else editor
     Backspace ->
       if mode == Insert then backspace editor else editor
+    DeleteLine ->
+      if mode == Normal then deleteLine editor else editor
     EnterInsert -> Editor buf cur Insert
     EnterNormal -> Editor buf cur Normal
 
@@ -79,6 +86,14 @@ insertChar ch (Editor buf (Cursor r c) mode) =
       newLine = prefix <> T.singleton ch <> suffix
   in Editor (setLine r newLine buf) (Cursor r (c + 1)) mode
 
+insertNewline :: Editor -> Editor
+insertNewline (Editor buf (Cursor r c) mode) =
+  let line = lineAt r buf
+      (prefix, suffix) = T.splitAt c line
+      buf' = setLine r prefix buf
+      buf'' = insertLineAfter r suffix buf'
+  in Editor buf'' (Cursor (r + 1) 0) mode
+
 backspace :: Editor -> Editor
 backspace (Editor buf (Cursor r c) mode)
   | c <= 0 = Editor buf (Cursor r c) mode
@@ -88,3 +103,11 @@ backspace (Editor buf (Cursor r c) mode)
           after = T.drop c line
           newLine = before <> after
       in Editor (setLine r newLine buf) (Cursor r (c - 1)) mode
+
+deleteLine :: Editor -> Editor
+deleteLine (Editor buf (Cursor r c) mode) =
+  let buf' = Buffer.deleteLine r buf
+      rows = numLines buf'
+      newRow = min r (rows - 1)
+      newCol = min c (lineLength buf' newRow)
+  in Editor buf' (Cursor newRow newCol) mode

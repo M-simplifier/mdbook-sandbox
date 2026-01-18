@@ -8,8 +8,10 @@
 
 - `applyCommand :: Command -> Editor -> Editor`
 - `insertChar :: Char -> Editor -> Editor`
+- `insertNewline :: Editor -> Editor`
 - `backspace :: Editor -> Editor`
 - `moveLeft` / `moveRight` / `moveUp` / `moveDown`
+- `deleteLine :: Editor -> Editor`
 
 ## 仕様の優先順位
 
@@ -26,5 +28,7 @@
 - 空行で挿入すると行の長さが1増える
 - 行頭での`backspace`は行を変えない
 - 行末から`moveRight`は次行の先頭に移る
+- `insertNewline`は行を分割し、カーソルを次行先頭に移す
+- `deleteLine`は現在行を削除し、バッファが空にならないように保つ
 
 それ以外はPBTに任せる方針で進めます。

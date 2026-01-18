@@ -42,6 +42,32 @@ spec = do
             afterLen = lineLength (buffer editorAfter) r
         in afterLen <= beforeLen
 
+  describe "insertNewline" $ do
+    prop "in Insert mode, insertNewline splits the line and moves cursor" $
+      forAll genEditor $ \editor ->
+        let editor' = editor { mode = Insert }
+            Cursor r c = cursor editor'
+            beforeLine = lineAt r (buffer editor')
+            editorAfter = applyCommand InsertNewline editor'
+            Cursor r' c' = cursor editorAfter
+            beforePrefixLen = T.length (T.take c beforeLine)
+            beforeSuffixLen = T.length (T.drop c beforeLine)
+            afterPrefixLen = lineLength (buffer editorAfter) r
+            afterSuffixLen = lineLength (buffer editorAfter) (r + 1)
+        in r' == r + 1
+           && c' == 0
+           && afterPrefixLen == beforePrefixLen
+           && afterSuffixLen == beforeSuffixLen
+
+  describe "deleteLine" $ do
+    prop "in Normal mode, deleteLine reduces line count unless single line" $
+      forAll genEditor $ \editor ->
+        let editor' = editor { mode = Normal }
+            beforeLines = numLines (buffer editor')
+            editorAfter = applyCommand DeleteLine editor'
+            afterLines = numLines (buffer editorAfter)
+        in if beforeLines > 1 then afterLines == beforeLines - 1 else afterLines == 1
+
   describe "examples" $ do
     it "moveRight from end of line goes to next line" $ do
       let buf = fromLines (T.pack "a" :| [T.pack "b"])
@@ -136,8 +162,12 @@ applyCommandModel cmd model@(Model ls cur mode') =
     MoveDown -> moveDownModel model
     InsertChar ch ->
       if mode' == Insert then insertCharModel ch model else model
+    InsertNewline ->
+      if mode' == Insert then insertNewlineModel model else model
     Backspace ->
       if mode' == Insert then backspaceModel model else model
+    DeleteLine ->
+      if mode' == Normal then deleteLineModel model else model
     EnterInsert -> Model ls cur Insert
     EnterNormal -> Model ls cur Normal
 
@@ -186,6 +216,14 @@ insertCharModel ch (Model ls (Cursor r c) mode') =
       newLines = setLineModel r newLine ls
   in Model newLines (Cursor r (c + 1)) mode'
 
+insertNewlineModel :: Model -> Model
+insertNewlineModel (Model ls (Cursor r c) mode') =
+  let line = lineAtModel r ls
+      (prefix, suffix) = T.splitAt c line
+      lines' = setLineModel r prefix ls
+      lines'' = insertLineAfterModel r suffix lines'
+  in Model lines'' (Cursor (r + 1) 0) mode'
+
 backspaceModel :: Model -> Model
 backspaceModel (Model ls (Cursor r c) mode')
   | c <= 0 = Model ls (Cursor r c) mode'
@@ -196,6 +234,23 @@ backspaceModel (Model ls (Cursor r c) mode')
           newLine = beforeText <> afterText
           newLines = setLineModel r newLine ls
       in Model newLines (Cursor r (c - 1)) mode'
+
+deleteLineModel :: Model -> Model
+deleteLineModel (Model ls (Cursor r c) mode') =
+  let xs = NE.toList ls
+      lines' = case xs of
+                 [_] -> T.empty :| []
+                 _ ->
+                   let (prefix, rest) = splitAt r xs
+                   in case rest of
+                        [] -> ls
+                        (_:ys) -> case prefix ++ ys of
+                                    (y:ys') -> y :| ys'
+                                    [] -> T.empty :| []
+      rows = NE.length lines'
+      newRow = min r (rows - 1)
+      newCol = min c (lineLengthModel newRow lines')
+  in Model lines' (Cursor newRow newCol) mode'
 
 lineAtModel :: Int -> NonEmpty Text -> Text
 lineAtModel idx ls = NE.toList ls !! idx
@@ -211,3 +266,10 @@ setLineModel idx newLine ls =
        (_:xs) -> case prefix ++ (newLine : xs) of
                    (y:ys) -> y :| ys
                    [] -> ls
+
+insertLineAfterModel :: Int -> Text -> NonEmpty Text -> NonEmpty Text
+insertLineAfterModel idx newLine ls =
+  let (prefix, rest) = splitAt (idx + 1) (NE.toList ls)
+  in case prefix ++ (newLine : rest) of
+       (y:ys) -> y :| ys
+       [] -> ls

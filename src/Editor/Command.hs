@@ -14,7 +14,9 @@ data Command
   | MoveUp
   | MoveDown
   | InsertChar Char
+  | InsertNewline
   | Backspace
+  | DeleteLine
   | EnterInsert
   | EnterNormal
   deriving (Eq, Show)

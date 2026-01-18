@@ -6,6 +6,8 @@ module Editor.Buffer
   , lineAt
   , lineLength
   , setLine
+  , insertLineAfter
+  , deleteLine
   ) where
 
 import Data.List.NonEmpty (NonEmpty(..))
@@ -33,6 +35,26 @@ lineLength buf idx = T.length (lineAt idx buf)
 
 setLine :: Int -> Text -> Buffer -> Buffer
 setLine idx newLine (Buffer ls) = Buffer (replaceAt idx newLine ls)
+
+insertLineAfter :: Int -> Text -> Buffer -> Buffer
+insertLineAfter idx newLine (Buffer ls) =
+  let (prefix, rest) = splitAt (idx + 1) (NE.toList ls)
+  in case prefix ++ (newLine : rest) of
+       (y:ys) -> Buffer (y :| ys)
+       [] -> Buffer ls
+
+deleteLine :: Int -> Buffer -> Buffer
+deleteLine idx (Buffer ls) =
+  let xs = NE.toList ls
+  in case xs of
+       [_] -> Buffer (T.empty :| [])
+       _ ->
+         let (prefix, rest) = splitAt idx xs
+         in case rest of
+              [] -> Buffer ls
+              (_:ys) -> case prefix ++ ys of
+                          (y:ys') -> Buffer (y :| ys')
+                          [] -> Buffer (T.empty :| [])
 
 replaceAt :: Int -> a -> NonEmpty a -> NonEmpty a
 replaceAt idx newVal ls =
